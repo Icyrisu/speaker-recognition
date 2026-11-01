@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/routeTypes';
@@ -28,7 +28,45 @@ export const IdentificationScreen: React.FC = () => {
   const [selectedScenario, setSelectedScenario] = useState<RecognitionScenario>('random');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingRemainingSec, setRecordingRemainingSec] = useState<number>(2.5);
   const [currentResult, setCurrentResult] = useState<RecognitionResult | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isRecording) {
+      setRecordingRemainingSec(2.5);
+      pulseAnim.setValue(1);
+      return;
+    }
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.25,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const rem = Math.max(0, 2.5 - elapsed);
+      setRecordingRemainingSec(rem);
+    }, 100);
+
+    return () => {
+      pulseLoop.stop();
+      clearInterval(interval);
+    };
+  }, [isRecording, pulseAnim]);
 
   const sampleButtons = [
     { label: 'Abror', file: 'sample_abror.wav' },
@@ -220,16 +258,50 @@ export const IdentificationScreen: React.FC = () => {
                 Records exactly 2.5 seconds of audio, extracts Mel-Spectrogram, and identifies voice biometric.
               </Text>
 
+              {isRecording && (
+                <View style={styles.liveRecordingBox}>
+                  <View style={styles.liveRecordingTopRow}>
+                    <Animated.View
+                      style={[
+                        styles.livePulseCircle,
+                        { transform: [{ scale: pulseAnim }] },
+                      ]}
+                    >
+                      <Radio size={18} color={colors.white} />
+                    </Animated.View>
+                    <View style={styles.liveRecordingTextCol}>
+                      <Text style={styles.liveRecordingTitle}>
+                        RECORDING AUDIO — SPEAK NOW!
+                      </Text>
+                      <Text style={styles.liveRecordingSub}>
+                        Speak continuously into the microphone ({recordingRemainingSec.toFixed(1)}s remaining)
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.liveProgressTrack}>
+                    <View
+                      style={[
+                        styles.liveProgressFill,
+                        {
+                          width: `${Math.min(100, ((2.5 - recordingRemainingSec) / 2.5) * 100)}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
+
               <AppButton
                 title={
                   isRecording
-                    ? 'Listening (2.5s)... Speak Now'
+                    ? `Recording Voice... (${recordingRemainingSec.toFixed(1)}s)`
                     : isLoading
                     ? 'Extracting Features & Inferring...'
                     : 'Record Voice (2.5s)'
                 }
                 onPress={handleRecordLive}
-                isLoading={isLoading}
+                isLoading={isLoading && !isRecording}
+                disabled={isRecording}
                 size="large"
                 variant={isRecording ? 'danger' : 'primary'}
                 icon={
@@ -428,6 +500,52 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
     lineHeight: 17,
+  },
+  liveRecordingBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.14)',
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  liveRecordingTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  livePulseCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveRecordingTextCol: {
+    flex: 1,
+  },
+  liveRecordingTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.danger,
+    letterSpacing: 0.3,
+  },
+  liveRecordingSub: {
+    fontSize: 11,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  liveProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  liveProgressFill: {
+    height: '100%',
+    backgroundColor: colors.danger,
   },
   modelDescription: {
     fontSize: 12,

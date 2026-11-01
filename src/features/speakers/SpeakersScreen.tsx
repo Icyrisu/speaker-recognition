@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,6 +23,7 @@ import {
   Tag,
   UserPlus,
   Mic,
+  Radio,
   CheckCircle2,
   X,
   ShieldCheck,
@@ -37,8 +39,46 @@ export const SpeakersScreen: React.FC = () => {
   const [newSpeakerName, setNewSpeakerName] = useState<string>('');
   const [recordedCount, setRecordedCount] = useState<number>(0);
   const [isRecordingSample, setIsRecordingSample] = useState<boolean>(false);
+  const [recordingRemainingSec, setRecordingRemainingSec] = useState<number>(2.5);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const requiredSamples = 3;
+
+  useEffect(() => {
+    if (!isRecordingSample) {
+      setRecordingRemainingSec(2.5);
+      pulseAnim.setValue(1);
+      return;
+    }
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.25,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const rem = Math.max(0, 2.5 - elapsed);
+      setRecordingRemainingSec(rem);
+    }, 100);
+
+    return () => {
+      pulseLoop.stop();
+      clearInterval(interval);
+    };
+  }, [isRecordingSample, pulseAnim]);
 
   const handlePressSpeaker = (speaker: SpeakerProfile) => {
     navigation.navigate('SpeakerDetail', {
@@ -253,17 +293,56 @@ export const SpeakersScreen: React.FC = () => {
                   })}
                 </View>
 
+                {isRecordingSample && (
+                  <View style={styles.liveRecordingBox}>
+                    <View style={styles.liveRecordingTopRow}>
+                      <Animated.View
+                        style={[
+                          styles.livePulseCircle,
+                          { transform: [{ scale: pulseAnim }] },
+                        ]}
+                      >
+                        <Radio size={18} color={colors.white} />
+                      </Animated.View>
+                      <View style={styles.liveRecordingTextCol}>
+                        <Text style={styles.liveRecordingTitle}>
+                          RECORDING SAMPLE {recordedCount + 1}/3 — SPEAK NOW!
+                        </Text>
+                        <Text style={styles.liveRecordingSub}>
+                          Speak continuously into the microphone ({recordingRemainingSec.toFixed(1)}s left)
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.liveProgressTrack}>
+                      <View
+                        style={[
+                          styles.liveProgressFill,
+                          {
+                            width: `${Math.min(100, ((2.5 - recordingRemainingSec) / 2.5) * 100)}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                )}
+
                 {recordedCount < requiredSamples ? (
                   <AppButton
                     title={
                       isRecordingSample
-                        ? 'Listening (2.5s)... Speak Continuously'
+                        ? `Recording Audio... (${recordingRemainingSec.toFixed(1)}s)`
                         : `Record Sample (${recordedCount + 1}/${requiredSamples})`
                     }
                     onPress={handleRecordSample}
-                    isLoading={isRecordingSample}
+                    disabled={isRecordingSample}
                     variant={isRecordingSample ? 'danger' : 'primary'}
-                    icon={<Mic size={16} color={colors.white} />}
+                    icon={
+                      isRecordingSample ? (
+                        <Radio size={16} color={colors.white} />
+                      ) : (
+                        <Mic size={16} color={colors.white} />
+                      )
+                    }
                     style={styles.enrollActionBtn}
                   />
                 ) : (
@@ -393,6 +472,52 @@ const styles = StyleSheet.create({
   },
   enrollActionBtn: {
     marginTop: spacing.xs,
+  },
+  liveRecordingBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.14)',
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  liveRecordingTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  livePulseCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveRecordingTextCol: {
+    flex: 1,
+  },
+  liveRecordingTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.danger,
+    letterSpacing: 0.3,
+  },
+  liveRecordingSub: {
+    fontSize: 11,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  liveProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  liveProgressFill: {
+    height: '100%',
+    backgroundColor: colors.danger,
   },
   speakerCard: {
     flexDirection: 'row',

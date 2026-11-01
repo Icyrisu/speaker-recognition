@@ -41,14 +41,25 @@ class AudioRecorderHelper(private val context: Context) {
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val bufferSize = maxOf(minBufferSize, targetSampleCount * 2)
 
-        // Use VOICE_RECOGNITION source to avoid aggressive OEM AGC / noise-floor pumping
-        val audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        // Use MIC source for full natural voice sensitivity on physical phones, with VOICE_RECOGNITION fallback
+        var audioRecord = AudioRecord(
+            MediaRecorder.AudioSource.MIC,
             sampleRate,
             channelConfig,
             audioFormat,
             bufferSize
         )
+
+        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            audioRecord.release()
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                bufferSize
+            )
+        }
 
         if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
             throw IllegalStateException("Failed to initialize AudioRecord instance")
@@ -119,7 +130,7 @@ class AudioRecorderHelper(private val context: Context) {
         // 2. Compute Active Speech Frame Ratio over 100 frames of 400 samples (25ms each)
         val numFrames = 100
         val frameLen = n / numFrames
-        val frameThresh = max(0.011f, 0.25f * rms)
+        val frameThresh = max(0.0045f, 0.22f * rms)
         var activeFrames = 0
 
         for (f in 0 until numFrames) {
@@ -139,7 +150,7 @@ class AudioRecorderHelper(private val context: Context) {
             val fRms = sqrt(fSumSq / frameLen).toFloat()
             val zcr = zeroCrossings.toFloat() / frameLen
             // Human voiced/unvoiced speech frame check
-            if (fRms >= frameThresh && zcr >= 0.012f && zcr <= 0.42f) {
+            if (fRms >= frameThresh && zcr >= 0.008f && zcr <= 0.45f) {
                 activeFrames++
             }
         }
@@ -147,22 +158,22 @@ class AudioRecorderHelper(private val context: Context) {
         val activeRatio = activeFrames.toFloat() / numFrames
 
         if (enforceStrictVad) {
-            if (rms < 0.014f || peak < 0.045f) {
+            if (rms < 0.0055f || peak < 0.022f) {
                 return AudioValidationResult(
                     isValidSpeech = false,
                     normalizedSamples = centered,
                     rms = rms,
                     activeFrameRatio = activeRatio,
-                    rejectionReason = "No speech detected (Audio level too quiet / Silence)."
+                    rejectionReason = "No speech detected (Audio level too quiet: RMS=${"%.4f".format(rms)}, Peak=${"%.3f".format(peak)}). Please speak clearly into the phone microphone."
                 )
             }
-            if (activeRatio < 0.22f) {
+            if (activeRatio < 0.16f) {
                 return AudioValidationResult(
                     isValidSpeech = false,
                     normalizedSamples = centered,
                     rms = rms,
                     activeFrameRatio = activeRatio,
-                    rejectionReason = "Insufficient continuous voice activity (${(activeRatio * 100).toInt()}% active frames). Please speak continuously for 2.5 seconds."
+                    rejectionReason = "Insufficient voice activity (${(activeRatio * 100).toInt()}% active frames). Please speak continuously while the red recording indicator is active."
                 )
             }
         }
