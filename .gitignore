@@ -6,6 +6,15 @@ graphify-out/
 *.log
 hs_err_*.log
 
+# Python virtual environment & cache
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+model/dataset/
+model/raw/
+
 # OSX
 #
 .DS_Store
