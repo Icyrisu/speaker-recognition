@@ -1,0 +1,19 @@
+{
+  "model_file": "speaker_model.tflite",
+  "input_shape": [
+    1,
+    158,
+    64,
+    1
+  ],
+  "input_type": "float32",
+  "sample_rate": 16000,
+  "classes": [
+    "abror",
+    "dzaki",
+    "ishma",
+    "khairil"
+  ],
+  "confidence_threshold": 0.7,
+  "test_accuracy": 1.0
+}
