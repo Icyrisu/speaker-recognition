@@ -5,5 +5,5 @@ export type SpeakerProfile = {
   description: string;
   enrolledAt: string;
   tags?: string[];
+  isCustomEnrolled?: boolean;
 };
-

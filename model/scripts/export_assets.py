@@ -1,59 +1,39 @@
 """
-Export script to package model, mel filterbank, and test samples
+Export script to package the trained Dual-Head TFLite model, model_config.json
+(with voiceprint centroids), mel filterbank, and unseen test samples
 directly into the Android assets directory:
 android/app/src/main/assets/
 """
 
-import os
-import shutil
 import json
+import shutil
+import sys
 from pathlib import Path
 import numpy as np
-import scipy.signal as signal
 import soundfile as sf
 import tensorflow as tf
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATASET_DIR = BASE_DIR / "model" / "dataset"
-EXPORTED_DIR = BASE_DIR / "model" / "exported"
+sys.path.append(str(BASE_DIR / "model" / "scripts"))
+from train_model import (
+    CLASSES,
+    DATASET_DIR,
+    EXPORTED_DIR,
+    audio_to_mel_spectrogram,
+    get_mel_filter_bank,
+    l2_normalize,
+)
+
 ASSETS_DIR = BASE_DIR / "android" / "app" / "src" / "main" / "assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 TEST_SAMPLES_DIR = ASSETS_DIR / "test_samples"
 TEST_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 
-SAMPLE_RATE = 16000
-N_FFT = 512
-HOP_LENGTH = 256
-N_MELS = 64
-F_MIN = 80.0
-F_MAX = 7600.0
-CLASSES = ["abror", "dzaki", "ishma", "khairil"]
-
-def get_mel_filter_bank():
-    def hz_to_mel(hz):
-        return 2595.0 * np.log10(1.0 + hz / 700.0)
-
-    def mel_to_hz(mel):
-        return 700.0 * (10.0 ** (mel / 2595.0) - 1.0)
-
-    mel_min = hz_to_mel(F_MIN)
-    mel_max = hz_to_mel(F_MAX)
-    mel_points = np.linspace(mel_min, mel_max, N_MELS + 2)
-    hz_points = mel_to_hz(mel_points)
-    bin_points = np.floor((N_FFT + 1) * hz_points / SAMPLE_RATE).astype(int)
-
-    fbank = np.zeros((N_MELS, int(N_FFT // 2 + 1)), dtype=np.float32)
-    for i in range(1, N_MELS + 1):
-        for j in range(bin_points[i - 1], bin_points[i]):
-            fbank[i - 1, j] = (j - bin_points[i - 1]) / max(1, bin_points[i] - bin_points[i - 1])
-        for j in range(bin_points[i], bin_points[i + 1]):
-            fbank[i - 1, j] = (bin_points[i + 1] - j) / max(1, bin_points[i + 1] - bin_points[i])
-    return fbank
 
 def main():
-    print("=== Exporting Android Assets ===")
+    print("=== Exporting Android Assets (Dual-Head Verification + Centroids) ===")
 
-    # 1. Copy TFLite model and config
+    # 1. Copy TFLite model and config (which includes voiceprint centroids)
     tflite_src = EXPORTED_DIR / "speaker_model.tflite"
     tflite_dst = ASSETS_DIR / "speaker_model.tflite"
     shutil.copyfile(tflite_src, tflite_dst)
@@ -62,7 +42,13 @@ def main():
     config_src = EXPORTED_DIR / "model_config.json"
     config_dst = ASSETS_DIR / "model_config.json"
     shutil.copyfile(config_src, config_dst)
-    print(f"Copied Config: {config_dst}")
+    print(f"Copied Config & Centroids: {config_dst}")
+
+    with open(config_dst, "r") as f:
+        config = json.load(f)
+
+    centroids = config["centroids"]
+    centroid_thresholds = config["centroid_thresholds"]
 
     # 2. Export Mel Filterbank as raw binary float32 (shape: 64 x 257 = 16448 floats)
     mel_fbank = get_mel_filter_bank()
@@ -70,62 +56,70 @@ def main():
     mel_fbank.tofile(str(mel_bin_path))
     print(f"Exported Mel filterbank: {mel_bin_path} (shape: {mel_fbank.shape}, {mel_bin_path.stat().st_size} bytes)")
 
-    # 3. Export 1 test sample per speaker and 1 unknown sample
+    # 3. Export 1 unseen test sample per speaker (from index 450 in the unseen Test block!)
     sample_mapping = {
-        "abror": "sample_abror.wav",
-        "dzaki": "sample_dzaki.wav",
-        "ishma": "sample_ishma.wav",
-        "khairil": "sample_khairil.wav",
-        "unknown": "sample_unknown.wav"
+        "abror": ("sample_abror.wav", 450),
+        "dzaki": ("sample_dzaki.wav", 450),
+        "ishma": ("sample_ishma.wav", 450),
+        "khairil": ("sample_khairil.wav", 450),
+        "unknown": ("sample_unknown.wav", 230),
     }
 
     test_vectors = {}
 
-    # Initialize TFLite interpreter for verification
     interpreter = tf.lite.Interpreter(model_path=str(tflite_dst))
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    for cls_name, dst_name in sample_mapping.items():
+    for cls_name, (dst_name, file_idx) in sample_mapping.items():
         src_dir = DATASET_DIR / cls_name
         files = sorted(list(src_dir.glob("*.wav")))
         if not files:
             print(f"Warning: No files for {cls_name}")
             continue
-        
-        # Pick file index 50 (from test set partition)
-        sample_file = files[min(50, len(files) - 1)]
+
+        sample_file = files[min(file_idx, len(files) - 1)]
         dst_path = TEST_SAMPLES_DIR / dst_name
         shutil.copyfile(sample_file, dst_path)
 
-        # Compute log mel spec and test TFLite inference
-        audio, sr = sf.read(str(sample_file))
-        _, _, zxx = signal.stft(audio, fs=SAMPLE_RATE, nperseg=N_FFT, noverlap=N_FFT - HOP_LENGTH, nfft=N_FFT)
-        spec = np.abs(zxx)
-        mel = np.dot(mel_fbank, spec)
-        log_mel = np.log(mel + 1e-6)
-        mean = np.mean(log_mel)
-        std = np.std(log_mel) + 1e-7
-        norm_mel = (log_mel - mean) / std
-        input_data = np.transpose(norm_mel, (1, 0)) # (158, 64)
-        input_data = np.expand_dims(input_data, axis=0) # (1, 158, 64)
-        input_data = np.expand_dims(input_data, axis=-1).astype(np.float32) # (1, 158, 64, 1)
+        audio, _ = sf.read(str(sample_file))
+        norm_mel = audio_to_mel_spectrogram(audio)  # (64, 158)
+        input_data = np.transpose(norm_mel, (1, 0))  # (158, 64)
+        input_data = np.expand_dims(input_data, axis=(0, -1)).astype(np.float32)  # (1, 158, 64, 1)
 
-        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.set_tensor(input_details[0]["index"], input_data)
         interpreter.invoke()
-        output = interpreter.get_tensor(output_details[0]['index'])[0]
-        pred_idx = int(np.argmax(output))
+        output = interpreter.get_tensor(output_details[0]["index"])[0]  # (69,)
+
+        probs = output[:5]
+        emb = l2_normalize(output[5:])
+
+        pred_idx = int(np.argmax(probs))
         pred_label = CLASSES[pred_idx]
-        pred_conf = float(output[pred_idx])
+        pred_conf = float(probs[pred_idx])
+        unk_prob = float(probs[4])
+
+        cos_sim = 0.0
+        verified_label = "unknown"
+        if pred_idx < 4 and pred_conf >= 0.80 and unk_prob < 0.25:
+            c_vec = np.array(centroids[pred_label], dtype=np.float32)
+            cos_sim = float(np.dot(emb, c_vec))
+            if cos_sim >= centroid_thresholds[pred_label]:
+                verified_label = pred_label
 
         test_vectors[dst_name] = {
             "ground_truth": cls_name,
-            "pred_label": pred_label,
+            "raw_pred": pred_label,
+            "verified_label": verified_label,
             "pred_confidence": round(pred_conf, 4),
-            "scores": {c: round(float(output[i]), 4) for i, c in enumerate(CLASSES)}
+            "centroid_cosine_sim": round(cos_sim, 4),
+            "scores": {c: round(float(probs[i]), 4) for i, c in enumerate(CLASSES)},
         }
-        print(f"Sample '{dst_name}': GT={cls_name.upper()} -> Pred={pred_label.upper()} ({pred_conf*100:.1f}%)")
+        print(
+            f"Sample '{dst_name:18s}': GT={cls_name.upper():8s} -> Verified={verified_label.upper():8s} "
+            f"(Prob={pred_conf*100:.1f}%, CosineSim={cos_sim*100:.1f}%)"
+        )
 
     vectors_json = ASSETS_DIR / "test_vectors.json"
     with open(vectors_json, "w") as f:
@@ -133,6 +127,6 @@ def main():
     print(f"Saved test vectors summary: {vectors_json}")
     print("=== Assets Export Complete ===")
 
+
 if __name__ == "__main__":
     main()
-

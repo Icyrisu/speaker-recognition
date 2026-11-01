@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { RecognitionResult } from '../domain/recognition';
 import { StatusBadge } from './StatusBadge';
-import { Clock, Cpu, Sparkles, User, AlertCircle, BarChart2 } from 'lucide-react-native';
+import { Clock, Cpu, Sparkles, User, AlertCircle, BarChart2, ShieldAlert } from 'lucide-react-native';
 
 interface ResultCardProps {
   result: RecognitionResult;
@@ -33,7 +33,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
         )}
         <Text style={[styles.disclaimerText, isRealAI && styles.realAiBannerText]}>
           {isRealAI
-            ? 'ON-DEVICE TFLITE CNN INFERENCE (16 KHZ MONO)'
+            ? 'ON-DEVICE DUAL-GATE BIOMETRIC VERIFICATION'
             : 'SIMULATED RESULT — NOT REAL AI'}
         </Text>
       </View>
@@ -41,7 +41,17 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
       <View style={styles.content}>
         {/* Header row with Status and Time */}
         <View style={styles.headerRow}>
-          <StatusBadge status={result.status} size={compact ? 'small' : 'medium'} />
+          <StatusBadge
+            status={result.status}
+            label={
+              isRecognized
+                ? 'ACCESS GRANTED'
+                : isUnknown
+                ? 'ACCESS DENIED'
+                : 'ERROR'
+            }
+            size={compact ? 'small' : 'medium'}
+          />
           <View style={styles.timeRow}>
             <Clock size={12} color={colors.textMuted} />
             <Text style={styles.timeText}>{formattedDate}</Text>
@@ -57,10 +67,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
               </View>
               <View style={styles.speakerTextContainer}>
                 <Text style={compact ? typography.h3 : typography.h2}>
-                  {result.speakerName || 'Speaker'}
+                  {result.speakerName || 'Authorized Speaker'}
                 </Text>
                 <Text style={typography.caption}>
-                  ID: {result.speakerId} • {isRealAI ? 'Biometric Match' : 'Simulated Match'}
+                  ID: {result.speakerId} • {isRealAI ? 'Verified Voiceprint' : 'Simulated Match'}
                 </Text>
               </View>
             </View>
@@ -68,12 +78,17 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
 
           {isUnknown && (
             <View style={styles.unrecognizedContainer}>
-              <Text style={[typography.h3, { color: colors.warning }]}>
-                Speaker Not Recognized
-              </Text>
+              <View style={styles.unrecognizedHeader}>
+                <ShieldAlert size={18} color={colors.warning} />
+                <Text style={[typography.h3, { color: colors.warning }]}>
+                  Speaker Not Authorized / Unknown
+                </Text>
+              </View>
               <Text style={typography.bodySecondary}>
-                {isRealAI
-                  ? 'Acoustic patterns do not match any enrolled speaker with sufficient confidence (threshold 70%).'
+                {result.rejectionReason
+                  ? result.rejectionReason
+                  : isRealAI
+                  ? 'Voice biometric did not pass the Dual-Gate threshold (Softmax >= 80% & Voiceprint Centroid Similarity).'
                   : 'Simulation result indicates acoustic patterns do not match enrolled profiles.'}
               </Text>
             </View>
@@ -97,35 +112,35 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
           <View style={styles.metricsFooter}>
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>
-                {isRealAI ? 'AI Confidence' : 'Simulated Confidence'}
+                {isRealAI ? 'Verify Score' : 'Simulated Conf'}
               </Text>
               <Text style={styles.metricValue}>
-                {result.confidence ? `${result.confidence}%` : 'N/A'}
+                {result.confidence !== undefined ? `${result.confidence}%` : 'N/A'}
               </Text>
             </View>
+            {isRealAI && result.cosineSimilarity !== undefined && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.metricItem}>
+                  <Text style={styles.metricLabel}>Centroid Sim</Text>
+                  <Text style={styles.metricValue}>{result.cosineSimilarity}%</Text>
+                </View>
+              </>
+            )}
             <View style={styles.divider} />
             <View style={styles.metricItem}>
               <View style={styles.labelWithIcon}>
                 <Cpu size={11} color={colors.textMuted} style={styles.metricIcon} />
                 <Text style={styles.metricLabel}>
-                  {isRealAI ? 'Inference Time' : 'Process Time'}
+                  {isRealAI ? 'Latency' : 'Process Time'}
                 </Text>
               </View>
               <Text style={styles.metricValue}>
                 {result.inferenceTimeMs !== undefined
-                  ? `${result.inferenceTimeMs}ms`
+                  ? `${result.inferenceTimeMs + (result.preprocessingTimeMs || 0)}ms`
                   : `${result.durationMs}ms`}
               </Text>
             </View>
-            {isRealAI && result.preprocessingTimeMs !== undefined && (
-              <>
-                <View style={styles.divider} />
-                <View style={styles.metricItem}>
-                  <Text style={styles.metricLabel}>STFT/Mel Time</Text>
-                  <Text style={styles.metricValue}>{result.preprocessingTimeMs}ms</Text>
-                </View>
-              </>
-            )}
           </View>
         )}
 
@@ -134,12 +149,13 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
           <View style={styles.scoreBreakdownContainer}>
             <View style={styles.scoreHeader}>
               <BarChart2 size={13} color={colors.textMuted} />
-              <Text style={styles.scoreHeaderText}>Speaker Class Probabilities</Text>
+              <Text style={styles.scoreHeaderText}>Class & Voiceprint Scores</Text>
             </View>
             <View style={styles.scoresGrid}>
               {Object.entries(result.scores).map(([speaker, score]) => {
                 const pct = Math.round(score * 100);
-                const isWinner = result.speakerName?.toLowerCase() === speaker.toLowerCase();
+                const isWinner =
+                  isRecognized && result.speakerName?.toLowerCase() === speaker.toLowerCase();
                 return (
                   <View
                     key={speaker}
@@ -147,6 +163,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
                   >
                     <Text
                       style={[styles.scoreChipName, isWinner && styles.scoreChipNameWinner]}
+                      numberOfLines={1}
                     >
                       {speaker.toUpperCase()}
                     </Text>
@@ -242,6 +259,12 @@ const styles = StyleSheet.create({
   unrecognizedContainer: {
     paddingVertical: spacing.xs,
   },
+  unrecognizedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: 4,
+  },
   errorContainer: {
     paddingVertical: spacing.xs,
   },
@@ -310,11 +333,13 @@ const styles = StyleSheet.create({
   },
   scoresGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
   scoreChip: {
+    minWidth: '18%',
     flex: 1,
     backgroundColor: colors.surfaceHover,
     paddingVertical: spacing.xs,

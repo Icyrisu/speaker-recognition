@@ -4,18 +4,20 @@ import android.content.Context
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.ln
+import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Extracts 2D Log Mel-Spectrogram features from 16kHz mono audio (40,000 samples / 2.5s).
- * Exactly matches scipy.signal.stft + Mel filterbank logic used during model training:
- * - Sampling rate: 16,000 Hz
- * - N_FFT: 512
- * - Hop length: 256
- * - N_MELS: 64
- * - Output shape: [158 frames, 64 mel bins]
+ * Extracts channel-robust 2D Log Mel-Spectrogram features from 16kHz mono audio (40,000 samples / 2.5s).
+ * Mirrors the exact mathematical pipeline in train_model.py:
+ * 1. DC Offset removal & 0.90 Peak Normalization
+ * 2. 1st-Order High-Pass Pre-emphasis (alpha = 0.97)
+ * 3. 512-point STFT (hop 256, periodic Hann window) + 64 Mel filterbanks
+ * 4. Top-dB Dynamic Range Floor Clamping (max_log - 4.5 nat)
+ * 5. Hybrid Cepstral Mean Subtraction (70% per-bin mean + 30% global mean) + Global Std scaling
  */
 class AudioFeatureExtractor(context: Context) {
     private val nFft = 512
@@ -23,6 +25,9 @@ class AudioFeatureExtractor(context: Context) {
     private val nMels = 64
     private val numFrames = 158
     private val halfFftPlusOne = nFft / 2 + 1 // 257
+    private val preemphCoef = 0.97f
+    private val topDbNat = 4.5f
+    private val cmsAlpha = 0.70f
 
     private val dftUtil = DftUtil(nFft)
     private val melFilterBank = Array(nMels) { FloatArray(halfFftPlusOne) }
@@ -30,16 +35,14 @@ class AudioFeatureExtractor(context: Context) {
     private val windowScale: Float
 
     init {
-        // 1. Precompute periodic Hann window: win[n] = 0.5 * (1 - cos(2*pi*n / nFft))
         var winSum = 0f
         for (i in 0 until nFft) {
             val w = (0.5f * (1.0f - cos(2.0 * Math.PI * i / nFft).toFloat()))
             hannWindow[i] = w
             winSum += w
         }
-        windowScale = 1.0f / winSum // 1.0f / 256.0f
+        windowScale = 1.0f / winSum
 
-        // 2. Load Mel filterbank weights from assets/mel_filters.bin (shape: 64 x 257 floats)
         loadMelFilterBank(context)
     }
 
@@ -64,12 +67,9 @@ class AudioFeatureExtractor(context: Context) {
         }
     }
 
-    /**
-     * Converts a 40,000-sample (2.5s) audio array into a normalized Log Mel-Spectrogram of shape [158, 64].
-     */
     fun extractMelSpectrogram(audio: FloatArray): Array<FloatArray> {
         val targetLen = 40000
-        val audioSamples = if (audio.size >= targetLen) {
+        val raw = if (audio.size >= targetLen) {
             audio.copyOfRange(0, targetLen)
         } else {
             val padded = FloatArray(targetLen)
@@ -77,20 +77,43 @@ class AudioFeatureExtractor(context: Context) {
             padded
         }
 
-        // Apply boundary zero padding (256 at start, 256 at end) and tail padding (192 at end)
-        // Total padded length = 256 + 40000 + 256 + 192 = 40704
+        // 1. Ensure DC offset removal & 0.90 peak normalization
+        var sum = 0.0
+        for (i in 0 until targetLen) sum += raw[i]
+        val dcMean = (sum / targetLen).toFloat()
+
+        var peak = 0.0f
+        for (i in 0 until targetLen) {
+            raw[i] -= dcMean
+            val av = abs(raw[i])
+            if (av > peak) peak = av
+        }
+        if (peak > 1e-4f) {
+            val scale = 0.90f / peak
+            for (i in 0 until targetLen) {
+                raw[i] *= scale
+            }
+        }
+
+        // 2. Apply 1st-Order Pre-emphasis: emph[n] = x[n] - 0.97 * x[n-1]
+        val emph = FloatArray(targetLen)
+        emph[0] = raw[0]
+        for (i in 1 until targetLen) {
+            emph[i] = raw[i] - preemphCoef * raw[i - 1]
+        }
+
+        // 3. Boundary zero padding (256 at start, 256 + 192 at end -> total 40704)
         val totalPaddedLen = 40704
         val paddedAudio = FloatArray(totalPaddedLen)
-        System.arraycopy(audioSamples, 0, paddedAudio, 256, targetLen)
+        System.arraycopy(emph, 0, paddedAudio, 256, targetLen)
 
         val logMelSpec = Array(numFrames) { FloatArray(nMels) }
         val windowedInput = FloatArray(nFft)
         val specMag = FloatArray(halfFftPlusOne)
 
-        var sumLogMel = 0.0
-        val totalElements = numFrames * nMels
+        var maxLogVal = -1e9f
 
-        // Extract STFT frames and compute Mel energy
+        // 4. STFT & Log-Mel extraction
         for (t in 0 until numFrames) {
             val startIdx = t * hopLength
             for (i in 0 until nFft) {
@@ -107,28 +130,49 @@ class AudioFeatureExtractor(context: Context) {
                 }
                 val logVal = ln(melEnergy + 1e-6f)
                 logMelSpec[t][m] = logVal
-                sumLogMel += logVal
+                if (logVal > maxLogVal) maxLogVal = logVal
             }
         }
 
-        // Global normalization per spectrogram: norm = (logMel - mean) / (std + 1e-7)
-        val mean = (sumLogMel / totalElements).toFloat()
+        // 5. Top-dB Dynamic Range Floor Clamping (clamps silence/pause floor to maxLogVal - 4.5)
+        val floorVal = maxLogVal - topDbNat
+        var globalSum = 0.0
+        val binSums = DoubleArray(nMels)
+
+        for (t in 0 until numFrames) {
+            for (m in 0 until nMels) {
+                val clamped = max(logMelSpec[t][m], floorVal)
+                logMelSpec[t][m] = clamped
+                binSums[m] += clamped
+                globalSum += clamped
+            }
+        }
+
+        // 6. Hybrid Cepstral Mean Subtraction (70% per-bin mean + 30% global mean) + Global Std
+        val totalElements = numFrames * nMels
+        val globalMean = (globalSum / totalElements).toFloat()
+        val hybridMeanPerBin = FloatArray(nMels)
+        for (m in 0 until nMels) {
+            val binMean = (binSums[m] / numFrames).toFloat()
+            hybridMeanPerBin[m] = cmsAlpha * binMean + (1.0f - cmsAlpha) * globalMean
+        }
+
         var varianceSum = 0.0
         for (t in 0 until numFrames) {
             for (m in 0 until nMels) {
-                val diff = logMelSpec[t][m] - mean
-                varianceSum += diff * diff
+                val centered = logMelSpec[t][m] - hybridMeanPerBin[m]
+                logMelSpec[t][m] = centered
+                varianceSum += centered * centered
             }
         }
-        val std = (sqrt(varianceSum / totalElements) + 1e-7).toFloat()
 
+        val std = (sqrt(varianceSum / totalElements) + 1e-7).toFloat()
         for (t in 0 until numFrames) {
             for (m in 0 until nMels) {
-                logMelSpec[t][m] = (logMelSpec[t][m] - mean) / std
+                logMelSpec[t][m] /= std
             }
         }
 
         return logMelSpec
     }
 }
-

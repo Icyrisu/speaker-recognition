@@ -1,57 +1,72 @@
 {
   "sample_abror.wav": {
     "ground_truth": "abror",
-    "pred_label": "abror",
-    "pred_confidence": 0.964,
+    "raw_pred": "abror",
+    "verified_label": "abror",
+    "pred_confidence": 1.0,
+    "centroid_cosine_sim": 0.8405,
     "scores": {
-      "abror": 0.964,
-      "dzaki": 0.0123,
-      "ishma": 0.0132,
-      "khairil": 0.0106
+      "abror": 1.0,
+      "dzaki": 0.0,
+      "ishma": 0.0,
+      "khairil": 0.0,
+      "unknown": 0.0
     }
   },
   "sample_dzaki.wav": {
     "ground_truth": "dzaki",
-    "pred_label": "dzaki",
-    "pred_confidence": 0.9982,
+    "raw_pred": "dzaki",
+    "verified_label": "dzaki",
+    "pred_confidence": 1.0,
+    "centroid_cosine_sim": 0.9595,
     "scores": {
-      "abror": 0.0003,
-      "dzaki": 0.9982,
-      "ishma": 0.0013,
-      "khairil": 0.0002
+      "abror": 0.0,
+      "dzaki": 1.0,
+      "ishma": 0.0,
+      "khairil": 0.0,
+      "unknown": 0.0
     }
   },
   "sample_ishma.wav": {
     "ground_truth": "ishma",
-    "pred_label": "ishma",
-    "pred_confidence": 0.9997,
+    "raw_pred": "ishma",
+    "verified_label": "ishma",
+    "pred_confidence": 1.0,
+    "centroid_cosine_sim": 0.9877,
     "scores": {
-      "abror": 0.0001,
-      "dzaki": 0.0001,
-      "ishma": 0.9997,
-      "khairil": 0.0001
+      "abror": 0.0,
+      "dzaki": 0.0,
+      "ishma": 1.0,
+      "khairil": 0.0,
+      "unknown": 0.0
     }
   },
   "sample_khairil.wav": {
     "ground_truth": "khairil",
-    "pred_label": "khairil",
-    "pred_confidence": 0.9932,
+    "raw_pred": "khairil",
+    "verified_label": "khairil",
+    "pred_confidence": 0.9988,
+    "centroid_cosine_sim": 0.8348,
     "scores": {
       "abror": 0.0007,
-      "dzaki": 0.001,
-      "ishma": 0.0051,
-      "khairil": 0.9932
+      "dzaki": 0.0005,
+      "ishma": 0.0,
+      "khairil": 0.9988,
+      "unknown": 0.0
     }
   },
   "sample_unknown.wav": {
     "ground_truth": "unknown",
-    "pred_label": "abror",
-    "pred_confidence": 0.6676,
+    "raw_pred": "unknown",
+    "verified_label": "unknown",
+    "pred_confidence": 1.0,
+    "centroid_cosine_sim": 0.0,
     "scores": {
-      "abror": 0.6676,
-      "dzaki": 0.0007,
-      "ishma": 0.01,
-      "khairil": 0.3217
+      "abror": 0.0,
+      "dzaki": 0.0,
+      "ishma": 0.0,
+      "khairil": 0.0,
+      "unknown": 1.0
     }
   }
 }

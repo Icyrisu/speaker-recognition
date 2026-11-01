@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../app/navigation/routeTypes';
@@ -7,7 +7,16 @@ import { ScreenContainer, HeaderBar, AppButton } from '../../components';
 import { useSession } from '../../app/context/SessionContext';
 import { SpeakerProfile } from '../../domain/speaker';
 import { colors, spacing, borderRadius, typography } from '../../theme';
-import { User, ShieldCheck, Sparkles, Hash, Calendar, Layers, Tag } from 'lucide-react-native';
+import {
+  User,
+  ShieldCheck,
+  Sparkles,
+  Hash,
+  Calendar,
+  Layers,
+  Tag,
+  Trash2,
+} from 'lucide-react-native';
 
 type SpeakerDetailRouteProp = RouteProp<RootStackParamList, 'SpeakerDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -15,10 +24,11 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const SpeakerDetailScreen: React.FC = () => {
   const route = useRoute<SpeakerDetailRouteProp>();
   const navigation = useNavigation<NavigationProp>();
-  const { service } = useSession();
+  const { service, refreshSpeakers } = useSession();
 
   const { speakerId, speakerName } = route.params;
   const [speaker, setSpeaker] = useState<SpeakerProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -32,20 +42,50 @@ export const SpeakerDetailScreen: React.FC = () => {
     };
   }, [service, speakerId]);
 
+  const handleDeleteCustomSpeaker = () => {
+    if (!speaker?.isCustomEnrolled || !service.deleteCustomSpeaker) return;
+
+    Alert.alert(
+      'Revoke Speaker Access',
+      `Are you sure you want to remove ${speaker.displayName}'s enrolled voiceprint from this device?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke Access',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+              await service.deleteCustomSpeaker!(speaker.id);
+              await refreshSpeakers();
+              navigation.goBack();
+            } catch {
+              Alert.alert('Error', 'Failed to remove custom speaker.');
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScreenContainer>
       <HeaderBar
         title={speakerName || 'Speaker Details'}
-        subtitle="Synthetic Profile Metadata"
+        subtitle="Biometric Voiceprint Profile"
         onBack={() => navigation.goBack()}
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Synthetic Banner */}
+        {/* Status Banner */}
         <View style={styles.syntheticBanner}>
           <ShieldCheck size={16} color={colors.info} />
           <Text style={styles.syntheticBannerText}>
-            SYNTHETIC PROFILE — NO REAL BIOMETRIC DATA STORED
+            {speaker?.isCustomEnrolled
+              ? 'ON-DEVICE ENROLLED VOICEPRINT CENTROID (64-D L2)'
+              : 'BASE ENROLLED SPEAKER PROFILE (CNN + CENTROID)'}
           </Text>
         </View>
 
@@ -73,15 +113,18 @@ export const SpeakerDetailScreen: React.FC = () => {
 
         {/* Metadata Details */}
         <View style={styles.metaSection}>
-          <Text style={typography.h3}>Synthetic Audio Metadata</Text>
+          <Text style={typography.h3}>Biometric Profile Metadata</Text>
 
           <View style={styles.metaRow}>
             <View style={styles.metaIconWrapper}>
               <Layers size={18} color={colors.primaryLight} />
             </View>
             <View style={styles.metaTextWrapper}>
-              <Text style={styles.metaLabel}>Mock Audio Samples</Text>
-              <Text style={styles.metaValue}>{speaker?.sampleCount ?? 0} Recorded Sessions</Text>
+              <Text style={styles.metaLabel}>Enrolled Voice Segments</Text>
+              <Text style={styles.metaValue}>
+                {speaker?.sampleCount ?? 0}{' '}
+                {speaker?.isCustomEnrolled ? 'Voiceprint Embeddings' : 'Training Segments (2.5s)'}
+              </Text>
             </View>
           </View>
 
@@ -102,30 +145,44 @@ export const SpeakerDetailScreen: React.FC = () => {
               <Hash size={18} color={colors.primaryLight} />
             </View>
             <View style={styles.metaTextWrapper}>
-              <Text style={styles.metaLabel}>Model Embedding Dimension</Text>
-              <Text style={styles.metaValue}>128-D (Simulated Vector)</Text>
+              <Text style={styles.metaLabel}>Verification Method</Text>
+              <Text style={styles.metaValue}>
+                {speaker?.isCustomEnrolled
+                  ? '64-D L2 Cosine Similarity (>= 82%)'
+                  : 'Dual-Gate: Softmax (>= 80%) + Centroid Cosine'}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Description Section */}
-        {speaker?.description && (
-          <View style={styles.descSection}>
-            <Text style={typography.h3}>Archetype Profile Notes</Text>
-            <Text style={[typography.body, styles.descText]}>{speaker.description}</Text>
-          </View>
-        )}
+        {/* Description Card */}
+        <View style={styles.descriptionCard}>
+          <Text style={typography.h3}>Profile Summary</Text>
+          <Text style={[typography.bodySecondary, styles.descriptionText]}>
+            {speaker?.description || 'Authorized speaker profile for voice biometric access control.'}
+          </Text>
+        </View>
 
-        {/* Primary CTA */}
-        <AppButton
-          title="Simulate Match For This Profile"
-          onPress={() => {
-            navigation.navigate('MainTabs', { screen: 'IdentifyTab' });
-          }}
-          size="large"
-          icon={<Sparkles size={18} color={colors.white} />}
-          style={styles.actionBtn}
-        />
+        {/* Actions */}
+        <View style={styles.actionsSection}>
+          <AppButton
+            title="Test Speaker Verification"
+            onPress={() => navigation.navigate('MainTabs', { screen: 'IdentifyTab' })}
+            size="large"
+            icon={<Sparkles size={18} color={colors.white} />}
+          />
+
+          {speaker?.isCustomEnrolled && (
+            <AppButton
+              title={isDeleting ? 'Revoking Access...' : 'Revoke Access / Delete Voiceprint'}
+              onPress={handleDeleteCustomSpeaker}
+              isLoading={isDeleting}
+              variant="danger"
+              icon={<Trash2 size={16} color={colors.white} />}
+              style={styles.deleteBtn}
+            />
+          )}
+        </View>
       </ScrollView>
     </ScreenContainer>
   );
@@ -135,24 +192,23 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl,
+    gap: spacing.lg,
   },
   syntheticBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     backgroundColor: colors.infoSurface,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.25)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
   },
   syntheticBannerText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.info,
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     flex: 1,
   },
   profileCard: {
@@ -162,21 +218,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
-    marginBottom: spacing.lg,
   },
   avatarLarge: {
-    width: 72,
-    height: 72,
-    borderRadius: borderRadius.full,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.primaryMuted,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: spacing.md,
   },
   tagRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: spacing.xs,
     marginTop: spacing.md,
   },
@@ -184,16 +241,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
   },
   tagIcon: {
     marginRight: 4,
   },
   tagText: {
-    fontSize: 11,
-    color: colors.info,
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '600',
   },
   metaSection: {
     backgroundColor: colors.surface,
@@ -201,50 +261,47 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
-    marginBottom: spacing.lg,
     gap: spacing.md,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
   },
   metaIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.sm,
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    alignItems: 'center',
   },
   metaTextWrapper: {
     flex: 1,
   },
   metaLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
+    ...typography.caption,
   },
   metaValue: {
-    fontSize: 14,
+    ...typography.body,
     fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: 2,
   },
-  descSection: {
+  descriptionCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
-    marginBottom: spacing.xl,
   },
-  descText: {
-    marginTop: spacing.sm,
-    color: colors.textSecondary,
-    lineHeight: 22,
+  descriptionText: {
+    marginTop: spacing.xs,
+    lineHeight: 20,
   },
-  actionBtn: {
-    width: '100%',
+  actionsSection: {
+    marginTop: spacing.xs,
+    gap: spacing.md,
+  },
+  deleteBtn: {
+    marginTop: spacing.xs,
   },
 });
-

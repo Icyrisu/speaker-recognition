@@ -23,7 +23,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const IdentificationScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { service, addResult, mode, setMode } = useSession();
+  const { service, addResult, mode, setMode, speakers } = useSession();
 
   const [selectedScenario, setSelectedScenario] = useState<RecognitionScenario>('random');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -188,17 +188,25 @@ export const IdentificationScreen: React.FC = () => {
             <View style={styles.modelInfoCard}>
               <View style={styles.cardHeader}>
                 <Cpu size={16} color={colors.primaryLight} />
-                <Text style={typography.h3}>Depthwise Separable 2D CNN</Text>
+                <Text style={typography.h3}>Dual-Gate Speaker Verification</Text>
               </View>
               <Text style={styles.modelDescription}>
-                speaker_model.tflite (68.7 KB) • 16 kHz Mono • 2.5s Window • 100% Test Acc
+                5-Class CNN + 64-D Voiceprint Centroids • VAD Silence Gate • Strict Access Control
               </Text>
               <View style={styles.speakerPillsContainer}>
-                {['Abror', 'Dzaki', 'Ishma', 'Khairil'].map((spk) => (
-                  <View key={spk} style={styles.speakerPill}>
-                    <Text style={styles.speakerPillText}>{spk}</Text>
+                {speakers.map((spk) => (
+                  <View key={spk.id} style={styles.speakerPill}>
+                    <Text style={styles.speakerPillText}>{spk.displayName}</Text>
                   </View>
                 ))}
+                <TouchableOpacity
+                  style={[styles.speakerPill, { borderColor: colors.success }]}
+                  onPress={() => navigation.navigate('MainTabs', { screen: 'SpeakersTab' })}
+                >
+                  <Text style={[styles.speakerPillText, { color: colors.success }]}>
+                    + Enroll Voice
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
