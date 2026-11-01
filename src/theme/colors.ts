@@ -7,6 +7,8 @@ export const colors = {
   background: '#0B0F19',
   surface: '#151D2E',
   surfaceElevated: '#1E293B',
+  surfaceHover: '#1E293B',
+  surfaceSelected: 'rgba(37, 99, 235, 0.15)',
   surfaceBorder: '#28354D',
 
   textPrimary: '#F8FAFC',

@@ -13,13 +13,14 @@ import {
   ArrowRight,
   Info,
   Layers,
+  Cpu,
 } from 'lucide-react-native';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { history, speakers } = useSession();
+  const { history, speakers, mode } = useSession();
 
   const latestResult = history[0];
 
@@ -29,7 +30,10 @@ export const DashboardScreen: React.FC = () => {
       <View style={styles.topBar}>
         <View style={styles.branding}>
           <Text style={typography.h1}>Voice Identify</Text>
-          <StatusBadge status="demo" label="DEMO MODE" />
+          <StatusBadge
+            status={mode === 'real' ? 'active' : 'demo'}
+            label={mode === 'real' ? 'TFLITE ACTIVE' : 'DEMO MODE'}
+          />
         </View>
         <TouchableOpacity
           style={styles.settingsIconButton}
@@ -43,12 +47,22 @@ export const DashboardScreen: React.FC = () => {
 
       <View style={styles.content}>
         {/* Notice Card */}
-        <View style={styles.noticeCard}>
-          <Info size={18} color={colors.info} style={styles.noticeIcon} />
+        <View style={[styles.noticeCard, mode === 'real' && styles.realNoticeCard]}>
+          {mode === 'real' ? (
+            <Cpu size={18} color={colors.primaryLight} style={styles.noticeIcon} />
+          ) : (
+            <Info size={18} color={colors.info} style={styles.noticeIcon} />
+          )}
           <View style={styles.noticeTextContainer}>
-            <Text style={styles.noticeTitle}>Phase 1 UI Prototype</Text>
+            <Text style={[styles.noticeTitle, mode === 'real' && styles.realNoticeTitle]}>
+              {mode === 'real'
+                ? 'Phase 2: On-Device TFLite CNN Active'
+                : 'Demo Simulation Mode'}
+            </Text>
             <Text style={styles.noticeBody}>
-              AI models and audio capture are not yet connected. All recognition flows use simulated data.
+              {mode === 'real'
+                ? 'Ultra-lightweight CNN (68.7 KB) trained on 2,000 voice segments. Real-time microphone & test sample inference available.'
+                : 'All recognition flows use simulated data. Switch to Real AI in the Identification tab to test the trained model.'}
             </Text>
           </View>
         </View>
@@ -57,18 +71,24 @@ export const DashboardScreen: React.FC = () => {
         <View style={styles.heroCard}>
           <View style={styles.heroHeader}>
             <View style={styles.heroIconWrapper}>
-              <Sparkles size={24} color={colors.primaryLight} />
+              {mode === 'real' ? (
+                <Cpu size={24} color={colors.primaryLight} />
+              ) : (
+                <Sparkles size={24} color={colors.primaryLight} />
+              )}
             </View>
             <View style={styles.heroTextContainer}>
               <Text style={typography.h2}>Speaker Recognition</Text>
               <Text style={typography.bodySecondary}>
-                Simulate on-device acoustic identification without recording audio.
+                {mode === 'real'
+                  ? 'Identify Abror, Dzaki, Ishma, or Khairil with 16 kHz acoustic biometrics.'
+                  : 'Simulate on-device acoustic identification without recording audio.'}
               </Text>
             </View>
           </View>
 
           <AppButton
-            title="Start Identification"
+            title={mode === 'real' ? 'Start Recognition' : 'Start Identification'}
             onPress={() => navigation.navigate('MainTabs', { screen: 'IdentifyTab' })}
             size="large"
             icon={<ArrowRight size={18} color={colors.white} />}
@@ -87,7 +107,7 @@ export const DashboardScreen: React.FC = () => {
               <Users size={20} color={colors.info} />
             </View>
             <Text style={styles.statNumber}>{speakers.length}</Text>
-            <Text style={styles.statLabel}>Sample Profiles</Text>
+            <Text style={styles.statLabel}>Enrolled Speakers</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -99,20 +119,18 @@ export const DashboardScreen: React.FC = () => {
               <Layers size={20} color={colors.success} />
             </View>
             <Text style={styles.statNumber}>{history.length}</Text>
-            <Text style={styles.statLabel}>Session Runs</Text>
+            <Text style={styles.statLabel}>Inferences Logged</Text>
           </TouchableOpacity>
         </View>
 
         {/* Latest Activity Section */}
         <View style={styles.sectionHeader}>
-          <Text style={typography.h3}>Recent Activity</Text>
+          <Text style={typography.h3}>Latest Recognition</Text>
           {history.length > 0 && (
             <TouchableOpacity
               onPress={() => navigation.navigate('MainTabs', { screen: 'HistoryTab' })}
             >
-              <Text style={[typography.caption, { color: colors.primaryLight }]}>
-                View all ({history.length})
-              </Text>
+              <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -120,9 +138,9 @@ export const DashboardScreen: React.FC = () => {
         {latestResult ? (
           <ResultCard result={latestResult} />
         ) : (
-          <View style={styles.emptyActivityCard}>
+          <View style={styles.emptyRecentCard}>
             <Text style={typography.bodySecondary}>
-              No simulations run in this session yet. Tap "Start Identification" above to test the recognition flow.
+              No speaker identification has been run yet. Tap Start Recognition above or pick a quick test sample.
             </Text>
           </View>
         )}
@@ -141,33 +159,34 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   branding: {
-    gap: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   settingsIconButton: {
-    width: 44,
-    height: 44,
+    padding: spacing.xs,
     borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    padding: spacing.lg,
+    paddingTop: spacing.xs,
   },
   noticeCard: {
     flexDirection: 'row',
-    backgroundColor: colors.infoSurface,
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.2)',
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    marginTop: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.25)',
-    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  realNoticeCard: {
+    backgroundColor: 'rgba(14, 165, 233, 0.1)',
+    borderColor: 'rgba(14, 165, 233, 0.3)',
   },
   noticeIcon: {
+    marginRight: spacing.sm,
     marginTop: 2,
   },
   noticeTextContainer: {
@@ -179,18 +198,21 @@ const styles = StyleSheet.create({
     color: colors.info,
     marginBottom: 2,
   },
+  realNoticeTitle: {
+    color: colors.primaryLight,
+  },
   noticeBody: {
     fontSize: 12,
     color: colors.textSecondary,
-    lineHeight: 17,
+    lineHeight: 16,
   },
   heroCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    marginTop: spacing.lg,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
+    marginBottom: spacing.lg,
   },
   heroHeader: {
     flexDirection: 'row',
@@ -202,11 +224,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: borderRadius.lg,
-    backgroundColor: colors.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.surfaceHover,
     borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.3)',
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   heroTextContainer: {
     flex: 1,
@@ -217,43 +239,44 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.lg,
+    marginBottom: spacing.xl,
   },
   statCard: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
+    alignItems: 'flex-start',
   },
   statIconWrapper: {
-    width: 36,
-    height: 36,
+    padding: spacing.xs,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
+    backgroundColor: colors.surfaceHover,
+    marginBottom: spacing.xs,
   },
   statNumber: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: colors.textPrimary,
   },
   statLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    ...typography.caption,
     marginTop: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.xxl,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
-  emptyActivityCard: {
+  viewAllText: {
+    ...typography.caption,
+    color: colors.primaryLight,
+    fontWeight: '600',
+  },
+  emptyRecentCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
@@ -262,4 +285,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-

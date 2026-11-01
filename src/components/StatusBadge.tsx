@@ -2,10 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, borderRadius, typography, spacing } from '../theme';
 import { RecognitionStatus } from '../domain/recognition';
-import { ShieldAlert, CheckCircle2, HelpCircle, AlertTriangle } from 'lucide-react-native';
+import { ShieldAlert, CheckCircle2, HelpCircle, AlertTriangle, Cpu } from 'lucide-react-native';
 
 interface StatusBadgeProps {
-  status: RecognitionStatus | 'demo';
+  status: RecognitionStatus | 'demo' | 'active';
   label?: string;
   size?: 'small' | 'medium';
 }
@@ -25,6 +25,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, size = 
       text = colors.demoBadgeText;
       defaultLabel = 'DEMO MODE';
       IconComponent = ShieldAlert;
+      break;
+    case 'active':
+      bg = 'rgba(14, 165, 233, 0.15)';
+      text = colors.primaryLight;
+      defaultLabel = 'TFLITE ACTIVE';
+      IconComponent = Cpu;
       break;
     case 'recognized':
       bg = colors.successSurface;

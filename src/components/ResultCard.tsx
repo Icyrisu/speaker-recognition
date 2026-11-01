@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { RecognitionResult } from '../domain/recognition';
 import { StatusBadge } from './StatusBadge';
-import { Clock, Cpu, Sparkles, User, AlertCircle } from 'lucide-react-native';
+import { Clock, Cpu, Sparkles, User, AlertCircle, BarChart2 } from 'lucide-react-native';
 
 interface ResultCardProps {
   result: RecognitionResult;
@@ -14,6 +14,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
   const isRecognized = result.status === 'recognized';
   const isUnknown = result.status === 'unknown';
   const isError = result.status === 'error';
+  const isRealAI = result.source === 'tflite-device';
 
   const formattedDate = new Date(result.createdAt).toLocaleTimeString([], {
     hour: '2-digit',
@@ -23,11 +24,17 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
 
   return (
     <View style={[styles.card, compact && styles.cardCompact]}>
-      {/* Disclaimer Banner */}
-      <View style={styles.disclaimerBanner}>
-        <Sparkles size={12} color={colors.warning} />
-        <Text style={styles.disclaimerText}>
-          SIMULATED RESULT — NOT REAL AI
+      {/* Banner */}
+      <View style={[styles.disclaimerBanner, isRealAI && styles.realAiBanner]}>
+        {isRealAI ? (
+          <Cpu size={12} color={colors.primaryLight} />
+        ) : (
+          <Sparkles size={12} color={colors.warning} />
+        )}
+        <Text style={[styles.disclaimerText, isRealAI && styles.realAiBannerText]}>
+          {isRealAI
+            ? 'ON-DEVICE TFLITE CNN INFERENCE (16 KHZ MONO)'
+            : 'SIMULATED RESULT — NOT REAL AI'}
         </Text>
       </View>
 
@@ -53,7 +60,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
                   {result.speakerName || 'Speaker'}
                 </Text>
                 <Text style={typography.caption}>
-                  ID: {result.speakerId} • Match Profile
+                  ID: {result.speakerId} • {isRealAI ? 'Biometric Match' : 'Simulated Match'}
                 </Text>
               </View>
             </View>
@@ -65,7 +72,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
                 Speaker Not Recognized
               </Text>
               <Text style={typography.bodySecondary}>
-                Simulation result indicates acoustic patterns do not match enrolled profiles.
+                {isRealAI
+                  ? 'Acoustic patterns do not match any enrolled speaker with sufficient confidence (threshold 70%).'
+                  : 'Simulation result indicates acoustic patterns do not match enrolled profiles.'}
               </Text>
             </View>
           )}
@@ -75,7 +84,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
               <View style={styles.errorHeader}>
                 <AlertCircle size={16} color={colors.danger} />
                 <Text style={[typography.h3, { color: colors.danger }]}>
-                  Simulation Error
+                  {isRealAI ? 'Inference Error' : 'Simulation Error'}
                 </Text>
               </View>
               <Text style={typography.bodySecondary}>{result.message}</Text>
@@ -83,11 +92,13 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
           )}
         </View>
 
-        {/* Metrics Footer (Simulated) */}
+        {/* Metrics Footer */}
         {!compact && (
           <View style={styles.metricsFooter}>
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Simulated Confidence</Text>
+              <Text style={styles.metricLabel}>
+                {isRealAI ? 'AI Confidence' : 'Simulated Confidence'}
+              </Text>
               <Text style={styles.metricValue}>
                 {result.confidence ? `${result.confidence}%` : 'N/A'}
               </Text>
@@ -96,14 +107,57 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, compact = false 
             <View style={styles.metricItem}>
               <View style={styles.labelWithIcon}>
                 <Cpu size={11} color={colors.textMuted} style={styles.metricIcon} />
-                <Text style={styles.metricLabel}>Process Time</Text>
+                <Text style={styles.metricLabel}>
+                  {isRealAI ? 'Inference Time' : 'Process Time'}
+                </Text>
               </View>
-              <Text style={styles.metricValue}>{result.durationMs} ms</Text>
+              <Text style={styles.metricValue}>
+                {result.inferenceTimeMs !== undefined
+                  ? `${result.inferenceTimeMs}ms`
+                  : `${result.durationMs}ms`}
+              </Text>
             </View>
-            <View style={styles.divider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Source</Text>
-              <Text style={[styles.metricValue, { color: colors.info }]}>Mock Fixture</Text>
+            {isRealAI && result.preprocessingTimeMs !== undefined && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.metricItem}>
+                  <Text style={styles.metricLabel}>STFT/Mel Time</Text>
+                  <Text style={styles.metricValue}>{result.preprocessingTimeMs}ms</Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Probability Breakdown for Real AI */}
+        {!compact && isRealAI && result.scores && (
+          <View style={styles.scoreBreakdownContainer}>
+            <View style={styles.scoreHeader}>
+              <BarChart2 size={13} color={colors.textMuted} />
+              <Text style={styles.scoreHeaderText}>Speaker Class Probabilities</Text>
+            </View>
+            <View style={styles.scoresGrid}>
+              {Object.entries(result.scores).map(([speaker, score]) => {
+                const pct = Math.round(score * 100);
+                const isWinner = result.speakerName?.toLowerCase() === speaker.toLowerCase();
+                return (
+                  <View
+                    key={speaker}
+                    style={[styles.scoreChip, isWinner && styles.scoreChipWinner]}
+                  >
+                    <Text
+                      style={[styles.scoreChipName, isWinner && styles.scoreChipNameWinner]}
+                    >
+                      {speaker.toUpperCase()}
+                    </Text>
+                    <Text
+                      style={[styles.scoreChipValue, isWinner && styles.scoreChipValueWinner]}
+                    >
+                      {pct}%
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
         )}
@@ -119,27 +173,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
     overflow: 'hidden',
-    marginVertical: spacing.sm,
   },
   cardCompact: {
-    marginVertical: spacing.xs,
+    borderRadius: borderRadius.md,
   },
   disclaimerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    gap: spacing.xs,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
-    gap: spacing.xs,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(245, 158, 11, 0.25)',
+    borderBottomColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  realAiBanner: {
+    backgroundColor: 'rgba(14, 165, 233, 0.12)',
+    borderBottomColor: 'rgba(14, 165, 233, 0.25)',
   },
   disclaimerText: {
-    color: colors.warning,
     fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    color: colors.warning,
+    letterSpacing: 0.5,
+  },
+  realAiBannerText: {
+    color: colors.primaryLight,
   },
   content: {
     padding: spacing.md,
@@ -153,14 +212,14 @@ const styles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   timeText: {
-    fontSize: 12,
-    color: colors.textMuted,
+    ...typography.caption,
+    fontSize: 11,
   },
   identityContainer: {
-    marginBottom: spacing.sm,
+    marginVertical: spacing.xs,
   },
   speakerRow: {
     flexDirection: 'row',
@@ -170,39 +229,40 @@ const styles = StyleSheet.create({
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: colors.surfaceHover,
     borderWidth: 1,
-    borderColor: colors.surfaceBorder,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   speakerTextContainer: {
     flex: 1,
   },
   unrecognizedContainer: {
-    gap: spacing.xs,
+    paddingVertical: spacing.xs,
   },
   errorContainer: {
-    gap: spacing.xs,
+    paddingVertical: spacing.xs,
   },
   errorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   metricsFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-around',
+    marginTop: spacing.md,
     paddingTop: spacing.md,
-    marginTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.surfaceBorder,
   },
   metricItem: {
-    flex: 1,
     alignItems: 'center',
+    flex: 1,
   },
   labelWithIcon: {
     flexDirection: 'row',
@@ -212,19 +272,78 @@ const styles = StyleSheet.create({
     marginRight: 3,
   },
   metricLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
-    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    fontWeight: '600',
   },
   metricValue: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.textPrimary,
+    marginTop: 2,
   },
   divider: {
     width: 1,
     height: 24,
     backgroundColor: colors.surfaceBorder,
   },
+  scoreBreakdownContainer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceBorder,
+  },
+  scoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  scoreHeaderText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  scoresGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  scoreChip: {
+    flex: 1,
+    backgroundColor: colors.surfaceHover,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  scoreChipWinner: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: colors.success,
+  },
+  scoreChipName: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  scoreChipNameWinner: {
+    color: colors.success,
+    fontWeight: '700',
+  },
+  scoreChipValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 1,
+  },
+  scoreChipValueWinner: {
+    color: colors.success,
+  },
 });
-

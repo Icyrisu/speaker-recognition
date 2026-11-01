@@ -3,6 +3,9 @@ import { RecognitionResult } from '../../domain/recognition';
 import { SpeakerProfile } from '../../domain/speaker';
 import { SpeakerRecognitionService } from '../../services/speakerRecognition/SpeakerRecognitionService';
 import { defaultSpeakerService } from '../../services/speakerRecognition/MockSpeakerRecognitionService';
+import { onDeviceSpeakerService } from '../../services/speakerRecognition/OnDeviceSpeakerRecognitionService';
+
+export type AppRecognitionMode = 'real' | 'mock';
 
 interface SessionContextType {
   history: RecognitionResult[];
@@ -12,29 +15,34 @@ interface SessionContextType {
   service: SpeakerRecognitionService;
   isLoadingSpeakers: boolean;
   refreshSpeakers: () => Promise<void>;
+  mode: AppRecognitionMode;
+  setMode: (mode: AppRecognitionMode) => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
-export const SessionProvider: React.FC<{ children: ReactNode; service?: SpeakerRecognitionService }> = ({
+export const SessionProvider: React.FC<{ children: ReactNode; initialMode?: AppRecognitionMode }> = ({
   children,
-  service = defaultSpeakerService,
+  initialMode = 'real',
 }) => {
+  const [mode, setMode] = useState<AppRecognitionMode>(initialMode);
   const [history, setHistory] = useState<RecognitionResult[]>([]);
   const [speakers, setSpeakers] = useState<SpeakerProfile[]>([]);
   const [isLoadingSpeakers, setIsLoadingSpeakers] = useState<boolean>(true);
 
+  const activeService = mode === 'real' ? onDeviceSpeakerService : defaultSpeakerService;
+
   const refreshSpeakers = useCallback(async () => {
     try {
       setIsLoadingSpeakers(true);
-      const data = await service.getSpeakers();
+      const data = await activeService.getSpeakers();
       setSpeakers(data);
     } catch {
       // Keep existing speakers if error occurs
     } finally {
       setIsLoadingSpeakers(false);
     }
-  }, [service]);
+  }, [activeService]);
 
   useEffect(() => {
     refreshSpeakers();
@@ -55,9 +63,11 @@ export const SessionProvider: React.FC<{ children: ReactNode; service?: SpeakerR
         speakers,
         addResult,
         clearHistory,
-        service,
+        service: activeService,
         isLoadingSpeakers,
         refreshSpeakers,
+        mode,
+        setMode,
       }}
     >
       {children}
@@ -72,4 +82,3 @@ export const useSession = (): SessionContextType => {
   }
   return context;
 };
-

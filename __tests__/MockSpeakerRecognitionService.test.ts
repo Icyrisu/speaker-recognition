@@ -15,9 +15,9 @@ describe('MockSpeakerRecognitionService', () => {
   });
 
   it('retrieves a speaker by ID', async () => {
-    const speaker = await service.getSpeakerById('spk-001');
+    const speaker = await service.getSpeakerById('spk_abror');
     expect(speaker).not.toBeNull();
-    expect(speaker?.displayName).toBe('Speaker 01');
+    expect(speaker?.displayName).toBe('Abror');
   });
 
   it('simulates a recognized speaker scenario correctly', async () => {
