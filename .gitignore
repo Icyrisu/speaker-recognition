@@ -2,6 +2,9 @@
 *.md
 !README.md
 .agent/
+graphify-out/
+*.log
+hs_err_*.log
 
 # OSX
 #
