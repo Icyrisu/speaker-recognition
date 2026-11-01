@@ -242,9 +242,9 @@ def main():
     model.save(str(keras_path))
     print(f"Saved Keras model to: {keras_path}")
 
-    # TFLite Conversion
+    # TFLite Conversion (pure FP32 for universal mobile runtime opcode v1 compatibility)
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]  # Standard size/speed optimization
+    converter.optimizations = []
     tflite_bytes = converter.convert()
 
     tflite_path = EXPORTED_DIR / "speaker_model.tflite"

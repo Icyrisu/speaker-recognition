@@ -2,12 +2,12 @@
   "sample_abror.wav": {
     "ground_truth": "abror",
     "pred_label": "abror",
-    "pred_confidence": 0.9632,
+    "pred_confidence": 0.964,
     "scores": {
-      "abror": 0.9632,
-      "dzaki": 0.0126,
-      "ishma": 0.0134,
-      "khairil": 0.0109
+      "abror": 0.964,
+      "dzaki": 0.0123,
+      "ishma": 0.0132,
+      "khairil": 0.0106
     }
   },
   "sample_dzaki.wav": {
@@ -35,23 +35,23 @@
   "sample_khairil.wav": {
     "ground_truth": "khairil",
     "pred_label": "khairil",
-    "pred_confidence": 0.9931,
+    "pred_confidence": 0.9932,
     "scores": {
       "abror": 0.0007,
-      "dzaki": 0.0011,
-      "ishma": 0.0052,
-      "khairil": 0.9931
+      "dzaki": 0.001,
+      "ishma": 0.0051,
+      "khairil": 0.9932
     }
   },
   "sample_unknown.wav": {
     "ground_truth": "unknown",
     "pred_label": "abror",
-    "pred_confidence": 0.6682,
+    "pred_confidence": 0.6676,
     "scores": {
-      "abror": 0.6682,
+      "abror": 0.6676,
       "dzaki": 0.0007,
-      "ishma": 0.0102,
-      "khairil": 0.3209
+      "ishma": 0.01,
+      "khairil": 0.3217
     }
   }
 }
